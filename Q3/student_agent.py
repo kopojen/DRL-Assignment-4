@@ -1,7 +1,10 @@
+# student_agent.py
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.distributions.normal import Normal
+
 
 def flatten_observation(time_step):
     """
@@ -25,6 +28,7 @@ def flatten_observation(time_step):
     done = time_step.last()
     return o_flat, r, done
 
+
 class PolicyNetwork(torch.nn.Module):
     """
     Actor 網路：兩層 256 隱藏層，全連接輸出 mu 和 log_sigma，
@@ -34,11 +38,10 @@ class PolicyNetwork(torch.nn.Module):
         super().__init__()
         self.fc1 = torch.nn.Linear(obs_size, 256)
         self.fc2 = torch.nn.Linear(256, 256)
-        self.mu_layer        = torch.nn.Linear(256, action_size)
-        self.log_sigma_layer = torch.nn.Linear(256, action_size)
+        self.mu = torch.nn.Linear(256, action_size)
+        self.log_sigma = torch.nn.Linear(256, action_size)
 
-    def forward(self,
-                x: torch.Tensor,
+    def forward(self, x: torch.Tensor,
                 deterministic: bool = False,
                 with_logprob: bool = False):
         """
@@ -53,12 +56,13 @@ class PolicyNetwork(torch.nn.Module):
         """
         h1 = F.relu(self.fc1(x))
         h2 = F.relu(self.fc2(h1))
-        mu = self.mu_layer(h2)
+        mu = self.mu(h2)
 
         if deterministic:
+            # 評估時直接用 tanh(mu)
             return torch.tanh(mu), None
 
-        log_sigma = self.log_sigma_layer(h2).clamp(min=-20.0, max=2.0)
+        log_sigma = self.log_sigma(h2).clamp(min=-20.0, max=2.0)
         sigma     = torch.exp(log_sigma)
         dist      = Normal(mu, sigma)
         x_t       = dist.rsample()
@@ -72,27 +76,26 @@ class PolicyNetwork(torch.nn.Module):
         action = torch.tanh(x_t)
         return action, log_p
 
+
 class Agent:
-    def __init__(self, 
+    """
+    Agent 透過已訓練好的 actor network 給出動作。
+    """
+    def __init__(self, ckpt_path: str = "350.ckpt",
                  obs_dim: int = 67,
                  act_dim: int = 21):
-        ckpt_path = "350.ckpt"
+        # 先定義裝置
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # 建立 actor network 並搬到裝置上
+        self.actor = PolicyNetwork(obs_dim, act_dim).to(self.device)
+
+        # 載入 checkpoint
         ckpt = torch.load(ckpt_path, map_location=self.device)
-        self.actor  = PolicyNetwork(obs_dim, act_dim).to(self.device)
         self.actor.load_state_dict(ckpt["actor"])
         self.actor.eval()
 
     def act(self, time_step) -> np.ndarray:
-        """
-        根據 dm_control 回傳的 time_step，輸出一維動作向量。
-
-        Args:
-            time_step: dm_control.environment TimeStep 物件
-
-        Returns:
-            action (np.ndarray): shape=(act_dim,) 且每個元素 ∈ [-1,1]
-        """
         obs, _, _ = flatten_observation(time_step)
         obs_t = torch.as_tensor(obs, dtype=torch.float64,
                                 device=self.device).unsqueeze(0)
