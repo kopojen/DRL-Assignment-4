@@ -77,9 +77,9 @@ class Agent:
                  obs_dim: int = 67,
                  act_dim: int = 21):
         ckpt_path = "350.ckpt"
+        ckpt = torch.load(ckpt_path, map_location=self.device)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.actor  = PolicyNetwork(obs_dim, act_dim).to(self.device)
-        ckpt = torch.load(ckpt_path, map_location=self.device)
         self.actor.load_state_dict(ckpt["actor"])
         self.actor.eval()
 
