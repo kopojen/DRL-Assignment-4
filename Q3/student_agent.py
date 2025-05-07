@@ -28,7 +28,6 @@ def flatten_observation(time_step):
     done = time_step.last()
     return o_flat, r, done
 
-
 class PolicyNetwork(torch.nn.Module):
     """
     Actor 網路：兩層 256 隱藏層，全連接輸出 mu 和 log_sigma，
@@ -59,13 +58,12 @@ class PolicyNetwork(torch.nn.Module):
         mu = self.mu(h2)
 
         if deterministic:
-            # 評估時直接用 tanh(mu)
             return torch.tanh(mu), None
 
         log_sigma = self.log_sigma(h2).clamp(min=-20.0, max=2.0)
-        sigma     = torch.exp(log_sigma)
-        dist      = Normal(mu, sigma)
-        x_t       = dist.rsample()
+        sigma = torch.exp(log_sigma)
+        dist = Normal(mu, sigma)
+        x_t = dist.rsample()
 
         if with_logprob:
             log_p = dist.log_prob(x_t).sum(axis=1)
@@ -76,27 +74,26 @@ class PolicyNetwork(torch.nn.Module):
         action = torch.tanh(x_t)
         return action, log_p
 
-
 class Agent:
-    """
-    Agent 透過已訓練好的 actor network 給出動作。
-    """
-    def __init__(self, ckpt_path: str = "350.ckpt",
+    def __init__(self,
+                 ckpt_path: str = "models/humanoid_walk_actor.ckpt",
                  obs_dim: int = 67,
                  act_dim: int = 21):
-        # 先定義裝置
+        # 定義裝置
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         # 建立 actor network 並搬到裝置上
         self.actor = PolicyNetwork(obs_dim, act_dim).to(self.device)
-
         # 載入 checkpoint
         ckpt = torch.load(ckpt_path, map_location=self.device)
         self.actor.load_state_dict(ckpt["actor"])
         self.actor.eval()
 
-    def act(self, time_step) -> np.ndarray:
-        obs, _, _ = flatten_observation(time_step)
+    def act(self, obs_input) -> np.ndarray:
+        if isinstance(obs_input, np.ndarray):
+            obs = obs_input
+        else:
+            obs, _, _ = flatten_observation(obs_input)
+
         obs_t = torch.as_tensor(obs, dtype=torch.float64,
                                 device=self.device).unsqueeze(0)
         with torch.no_grad():
