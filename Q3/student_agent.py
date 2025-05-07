@@ -76,7 +76,7 @@ class PolicyNetwork(torch.nn.Module):
 
 class Agent:
     def __init__(self,
-                 ckpt_path: str = "models/humanoid_walk_actor.ckpt",
+                 ckpt_path: str = "350.ckpt",
                  obs_dim: int = 67,
                  act_dim: int = 21):
         # 定義裝置
