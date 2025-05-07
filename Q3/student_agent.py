@@ -68,28 +68,27 @@ class Agent:
     Agent 透過已訓練好的 actor network 給出動作。
     """
     def __init__(self,
-                 ckpt_path: str = "350.ckpt",
+                 ckpt_path: str = "400.ckpt",
                  obs_dim: int = 67,
                  act_dim: int = 21):
         # 定義裝置
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # 建立 actor network 並搬到裝置上
-        self.actor = PolicyNetwork(obs_dim, act_dim).to(self.device)
+        # 建立 actor network → 之後直接轉成 float64 以符合訓練時的 dtype
+        self.actor = PolicyNetwork(obs_dim, act_dim).to(self.device).double()
         # 載入 checkpoint
         ckpt = torch.load(ckpt_path, map_location=self.device)
-        self.actor.load_state_dict(ckpt["actor"])
+        self.actor.load_state_dict(ckpt["actor"])  # checkpoint 亦為 float64 權重
         self.actor.eval()
 
     def act(self, obs_input) -> np.ndarray:
-        # 處理輸入為 numpy 或 TimeStep
+        """輸入 Numpy 觀測或 dm_control TimeStep，輸出 [-1,1] 動作 (np.float64)。"""
         if isinstance(obs_input, np.ndarray):
-            obs = obs_input.astype(np.float32)
+            obs = obs_input.astype(np.float64)
         else:
             obs, _, _ = flatten_observation(obs_input)
+            obs = obs.astype(np.float64)
 
-        # 轉成 float32 tensor，與 model weight dtype 一致
-        obs_t = torch.as_tensor(obs, dtype=torch.float32,
-                                device=self.device).unsqueeze(0)
+        obs_t = torch.as_tensor(obs, dtype=torch.float64, device=self.device).unsqueeze(0)
         with torch.no_grad():
             action_t, _ = self.actor(obs_t, deterministic=True)
-        return action_t.cpu().numpy().flatten()
+        return action_t.cpu().numpy().flatten().astype(np.float64)
