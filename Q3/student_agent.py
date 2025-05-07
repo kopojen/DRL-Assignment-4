@@ -14,16 +14,15 @@ def flatten_observation(time_step):
         time_step: dm_control.environment TimeStep 物件
 
     Returns:
-        o_flat (np.ndarray): 攤平後的 observation 向量
+        o_flat (np.ndarray): 攤平後的 observation 向量，dtype=np.float32
         r       (float):     當前 step 的 reward
         done    (bool):      episode 是否結束
     """
-    o_flat = np.array([])
+    # 以 float32 初始化，避免後續 dtype 不一致
+    o_flat = np.array([], dtype=np.float32)
     for key, value in time_step.observation.items():
-        if value.shape:  # array
-            o_flat = np.concatenate((o_flat, value.flatten()))
-        else:            # scalar
-            o_flat = np.concatenate((o_flat, np.array([value])))
+        arr = np.array(value).astype(np.float32)
+        o_flat = np.concatenate((o_flat, arr.flatten()))
     r = time_step.reward
     done = time_step.last()
     return o_flat, r, done
@@ -43,16 +42,6 @@ class PolicyNetwork(torch.nn.Module):
     def forward(self, x: torch.Tensor,
                 deterministic: bool = False,
                 with_logprob: bool = False):
-        """
-        Args:
-            x            (Tensor):   shape=(B, obs_size)
-            deterministic (bool):    是否只回傳 tanh(mu)；True 用於 eval
-            with_logprob (bool):     是否計算 log_prob；用於 train
-
-        Returns:
-            action   (Tensor): shape=(B, action_size)，經 tanh 後的動作
-            log_prob (Tensor|None): 若 with_logprob，回傳加了 tanh 修正的 log_prob
-        """
         h1 = F.relu(self.fc1(x))
         h2 = F.relu(self.fc2(h1))
         mu = self.mu(h2)
@@ -75,6 +64,9 @@ class PolicyNetwork(torch.nn.Module):
         return action, log_p
 
 class Agent:
+    """
+    Agent 透過已訓練好的 actor network 給出動作。
+    """
     def __init__(self,
                  ckpt_path: str = "350.ckpt",
                  obs_dim: int = 67,
@@ -89,12 +81,14 @@ class Agent:
         self.actor.eval()
 
     def act(self, obs_input) -> np.ndarray:
+        # 處理輸入為 numpy 或 TimeStep
         if isinstance(obs_input, np.ndarray):
-            obs = obs_input
+            obs = obs_input.astype(np.float32)
         else:
             obs, _, _ = flatten_observation(obs_input)
 
-        obs_t = torch.as_tensor(obs, dtype=torch.float64,
+        # 轉成 float32 tensor，與 model weight dtype 一致
+        obs_t = torch.as_tensor(obs, dtype=torch.float32,
                                 device=self.device).unsqueeze(0)
         with torch.no_grad():
             action_t, _ = self.actor(obs_t, deterministic=True)
