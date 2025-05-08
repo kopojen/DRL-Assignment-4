@@ -50,7 +50,7 @@ class Agent:
     輸出 shape=(action_dim,) 的 np.float64 動作向量。
     """
     def __init__(self,
-                 ckpt_path: str = "700.ckpt",
+                 ckpt_path: str = "1500.ckpt",
                  obs_dim:   int = 67,
                  act_dim:   int = 21):
         # 設備
