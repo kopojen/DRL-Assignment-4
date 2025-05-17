@@ -14,34 +14,31 @@ class PolicyNetwork(torch.nn.Module):
         super().__init__()
         self.fc1 = torch.nn.Linear(obs_size, 256)
         self.fc2 = torch.nn.Linear(256, 256)
-        self.mu = torch.nn.Linear(256, action_size)
-        self.log_sigma = torch.nn.Linear(256, action_size)
+        self.mu_head = torch.nn.Linear(256, action_size)
+        self.log_std_head = torch.nn.Linear(256, action_size)
 
-    def forward(self,
-                x: torch.Tensor,
-                deterministic: bool = False,
-                with_logprob: bool = False):
-        h1 = F.relu(self.fc1(x))
-        h2 = F.relu(self.fc2(h1))
-        mu = self.mu(h2)
+
+    def forward(self, x: torch.Tensor, deterministic=False, with_logprob=False):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        mu = self.mu_head(x)
 
         if deterministic:
             return torch.tanh(mu), None
 
-        log_sigma = self.log_sigma(h2).clamp(min=-20.0, max=2.0)
-        sigma     = torch.exp(log_sigma)
-        dist      = Normal(mu, sigma)
-        x_t       = dist.rsample()
+        log_std = self.log_std_head(x).clamp(min=-20, max=2)
+        std = torch.exp(log_std)
+        dist = Normal(mu, std)
+        raw_action = dist.rsample()
+        action = torch.tanh(raw_action)
 
+        log_prob = None
         if with_logprob:
-            log_p = dist.log_prob(x_t).sum(axis=1)
-            # tanh 校正項
-            log_p -= (2 * (np.log(2) - x_t - F.softplus(-2 * x_t))).sum(axis=1)
-        else:
-            log_p = None
+            log_prob = dist.log_prob(raw_action).sum(dim=1)
+            log_prob -= (2 * (np.log(2) - raw_action - F.softplus(-2 * raw_action))).sum(dim=1)
 
-        action = torch.tanh(x_t)
-        return action, log_p
+        return action, log_prob
+
 
 class Agent:
     """
@@ -50,7 +47,7 @@ class Agent:
     輸出 shape=(action_dim,) 的 np.float64 動作向量。
     """
     def __init__(self,
-                 ckpt_path: str = "1500.ckpt",
+                 ckpt_path: str = "2750.ckpt",
                  obs_dim:   int = 67,
                  act_dim:   int = 21):
         # 設備
